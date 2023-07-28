@@ -2,22 +2,107 @@
 A pytest plugin that provides enhanced doctesting for Pydata libraries
 """
 
+
+import pytest
 from _pytest import doctest
 from _pytest.doctest import DoctestModule, DoctestTextfile
 from _pytest.pathlib import import_path
 from _pytest.outcomes import skip
+from pathlib import Path
+
 
 from scpdt.impl import DTChecker, DTConfig, DTParser, DTFinder
+
+pytest_version = pytest.__version__
+
+def pytest_addoption(parser):
+    """
+    Register argparse-style options and ini-style config values,
+    called once at the beginning of a test run.
+    """
+    parser.addoption(
+        "--doctest-scpdt",
+        action="store_true",
+        default=False,
+        help="Run doctests in all .py modules using the scpdt tool",
+        dest="doctestscpdt"
+    )
+    parser.addoption(
+        "--doctest-only", 
+        action="store_true",
+        help="Perform doctests only using the scpdt tool."
+        )
+    parser.addini(
+        "doctest_optionflags",
+        "Option flags for doctests",
+        type="args",
+        default=["NORMALIZE_WHITESPACE", "ELLIPSIS", "IGNORE_EXCEPTION_DETAIL"]
+        )
+    parser.addini(
+        "doctest_scpdt",
+        help="Enable running doctests using the scpdt tool",
+        default=False
+    )
 
 
 def pytest_configure(config):
     """
     Allow plugins and conftest files to perform initial configuration.
     """
+    if not any((config.option.doctestscpdt, config.getini("doctest_scpdt"))):
+        return
 
     doctest._get_checker = _get_checker
     doctest.DoctestModule = DTModule
     doctest.DoctestTextfile = DTTextfile
+
+
+if pytest_version < '7.0':
+    def _filepath(path):
+        return path.basename
+    def _suffix(path):
+        return path.ext
+else:
+    def _filepath(path):
+        return path.name
+    def _suffix(path):
+        return path.suffix
+
+
+def pytest_collect_file(file_path, parent):
+    """
+    This hook looks for Python files (.py) and text files with doctests (.rst, for example)
+    """
+    config = parent.config
+    # This code is copy-pasted from the `_pytest.doctest` module(pytest 7.4.0):
+    # https://github.com/pytest-dev/pytest/blob/7c30f674c58ee16f2b74ef85bb8765252764ef70/src/_pytest/doctest.py#L125
+    # However, helper functions: `_suffix` and `_filepath` are used to handle paths and extensions depending on the pytest versions
+    if _suffix(file_path) == ".py":
+        if config.getoption("doctestscpdt") and not any(
+            (_is_setup_py(file_path), _is_main_py(file_path))
+        ):
+            return DTModule.from_parent(parent, path=file_path)
+    elif _is_doctest(config, file_path, parent):
+        return DTTextfile.from_parent(parent, path=file_path)
+    return None
+
+
+def _is_setup_py(path):
+    if _filepath(path) != "setup.py":
+        return False
+    contents = path.read_bytes()
+    return b"setuptools" in contents or b"distutils" in contents
+
+
+def _is_doctest(config, path, parent):
+    if _suffix(path) in (".txt", ".rst") and parent.session.isinitpath(path):
+        return True
+    globs = config.getoption("doctestglob")
+    return any(doctest.fnmatch_ex(glob, path) for glob in globs)
+
+
+def _is_main_py(path):
+    return _filepath(path) == "__main__.py"
 
 
 def _get_checker():
@@ -121,3 +206,4 @@ def _get_parser():
     Return instance of DTParser with default configuration
     """
     return DTParser(config=DTConfig())
+

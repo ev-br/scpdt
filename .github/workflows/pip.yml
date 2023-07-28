@@ -68,5 +68,5 @@ jobs:
       run: |
         test_files=("scpdt/tests/module_cases.py" "scpdt/tests/stopwords_cases.py")
           for file in "${test_files[@]}"; do
-            python -m pytest "${file}" --doctest-modules
+            python -m pytest "${file}" --doctest-scpdt
           done
