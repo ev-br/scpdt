@@ -2,8 +2,11 @@
 A pytest plugin that provides enhanced doctesting for Pydata libraries
 """
 import bdb
+import inspect
 import os
 import shutil
+import numpy as np
+import pytest
 
 from _pytest import doctest, outcomes
 from _pytest.doctest import DoctestModule, DoctestTextfile
@@ -14,8 +17,11 @@ from scpdt.impl import DTChecker, DTParser, DTFinder, DebugDTRunner
 from scpdt.conftest import dt_config
 from .util import np_errstate, matplotlib_make_nongui
 
+pytest_version = pytest.__version__
+
 
 copied_files = []
+modules = []
 
 def pytest_configure(config):
     """
@@ -39,6 +45,29 @@ def pytest_unconfigure(config):
                 os.remove(filepath)
         except FileNotFoundError:
             pass
+
+
+"""
+These helper functions are used to handle file paths and extensions of different pytest versions
+"""
+if pytest_version < '7.0':
+    def _filepath(path):
+        return path.basename
+    def _suffix(path):
+        return path.ext
+else:
+    def _filepath(path):
+        return path.name
+    def _suffix(path):
+        return path.suffix
+
+
+def pytest_collect_file(file_path, parent):
+    """
+    This hook ensures Cython files (.pyx) are collected by pytest
+    """
+    if _suffix(file_path) == ".pyx":
+        return DTModule.from_parent(parent, path=file_path)
 
 
 def _get_checker():
@@ -83,6 +112,7 @@ class DTModule(DoctestModule):
                 rootpath=self.config.rootpath
             )
         else:
+
             try:
                 module = import_path(
                     self.path,
@@ -112,12 +142,30 @@ class DTModule(DoctestModule):
             checker=_get_checker()
         )
 
-        # the rest remains unchanged
-        for test in finder.find(module, module.__name__):
-            if test.examples:  # skip empty doctests
-                yield doctest.DoctestItem.from_parent(
-                    self, name=test.name, runner=runner, dtest=test
-                )
+        
+        def collect_and_yield_tests(module, finder, runner, method=None):
+            if inspect.ismodule(module):
+                for test in finder.find(method or module, module=module):
+                    if test.examples: # skip empty doctests
+                        generate_log(module, test)
+                        yield doctest.DoctestItem.from_parent(
+                            self, name=test.name, runner=runner, dtest=test
+                        )
+            else:
+                for entry in dir(module):
+                    if inspect.ismodule(entry):
+                        for test in finder.find(method or entry, module=entry):
+                            if test.examples: # skip empty doctests
+                                generate_log(entry, test)
+                                yield doctest.DoctestItem.from_parent(
+                                    self, name=test.name, runner=runner, dtest=test
+                                )
+                
+
+        for method in module.__dict__.values():
+            if _is_numpy_ufunc(method):
+                yield from collect_and_yield_tests(module, finder, runner, method)
+        yield from collect_and_yield_tests(module, finder, runner)
 
 
 class DTTextfile(DoctestTextfile):
@@ -215,3 +263,22 @@ def _get_runner(checker, verbose, optionflags):
                 raise failure
             
     return PytestDTRunner(checker=checker, verbose=verbose, optionflags=optionflags, config=dt_config)
+
+
+def generate_log(module, test):
+    if test.examples:
+        with open('doctest.log', 'a') as LOGFILE:
+            if module.__name__ not in modules:
+                LOGFILE.write("\n" + module.__name__ + "\n")
+                LOGFILE.write("="*len(module.__name__) + "\n")
+                modules.append(module.__name__)
+            LOGFILE.write(test.name + "\n")
+
+
+def _is_numpy_ufunc(method):
+    while True:
+        try:
+            method = method.__wrapped__
+        except AttributeError:
+            break
+    return isinstance(method, np.ufunc)
