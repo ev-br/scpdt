@@ -8,6 +8,13 @@ import numpy as np
 from . import util
 
 
+## shim numpy 1.x vs 2.0
+if np.__version__ < "2":
+    VisibleDeprecationWarning = np.VisibleDeprecationWarning
+else:
+    VisibleDeprecationWarning = np.exceptions.VisibleDeprecationWarning
+
+
 # Register the optionflag to skip whole blocks, i.e.
 # sequences of Examples without an intervening text.
 SKIPBLOCK = doctest.register_optionflag('SKIPBLOCK')
@@ -251,7 +258,7 @@ class DTChecker(doctest.OutputChecker):
             with warnings.catch_warnings():
                 # NumPy's ragged array deprecation of np.array([1, (2, 3)]);
                 # also array abbreviations: try `np.diag(np.arange(1000))`
-                warnings.simplefilter('ignore', np.VisibleDeprecationWarning)
+                warnings.simplefilter('ignore', VisibleDeprecationWarning)
 
                 a_want = eval(want, dict(ns))
                 a_got = eval(got, dict(ns))
@@ -326,7 +333,7 @@ class DTChecker(doctest.OutputChecker):
             pass
         with warnings.catch_warnings():
             # NumPy's ragged array deprecation of np.array([1, (2, 3)])
-            warnings.simplefilter('ignore', np.VisibleDeprecationWarning)
+            warnings.simplefilter('ignore', VisibleDeprecationWarning)
 
             # This line is the crux of the whole thing. The rest is mostly scaffolding.
             result = np.allclose(want, got, atol=self.atol, rtol=self.rtol)
