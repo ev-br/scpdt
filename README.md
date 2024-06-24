@@ -272,12 +272,6 @@ and [a doctest example](https://github.com/scipy/scipy_doctest/blob/main/scipy_d
 for more details.
 
 
-### The SciPy Doctest Pytest Plugin
-
-The pytest plugin enables the use of `scipy_doctest` tools to perform doctests.
-
-Follow the given instructions to utilize the pytest plugin for doctesting.
-
 ### NumPy and SciPy wrappers
 
 
@@ -361,6 +355,19 @@ leads to
 
 - `scipy.linalg._basic.det`, collected from `scipy/linalg/_basic.py`, is private.
 - `scipy.linalg.det`, collected from `scipy/linalg/__init__.py`, is public.
+
+
+- *`pytest`'s assertion rewriting*
+
+In some rare cases you may need to either explicitly register the `scipy_doctest`
+package with the `pytest` assertion rewriting machinery, or ask it to avoid rewriting
+completely, via `pytest --assert=plain`.
+See [the `pytest documentation`](https://docs.pytest.org/en/7.1.x/how-to/assert.html)
+for more details.
+
+In general, rewriting assertions is not very useful for doctests, as the
+output on error is fixed by the doctest machinery anyway. Therefore, we believe
+adding `--assert=plain` is reasonable.
 
 
 ## Prior art and related work
